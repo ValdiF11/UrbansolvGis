@@ -1,4 +1,6 @@
-const BottomTable = () => {
+import React from "react";
+
+const BottomTable = ({ routeHistory }) => {
   return (
     <>
       <div>
@@ -13,16 +15,20 @@ const BottomTable = () => {
               <th>End</th>
               <th>Traffic</th>
               <th>Duration</th>
+              <th>Distance</th>
+              <th>CreatedAt</th>
             </tr>
           </thead>
           <tbody>
-            {/* Add your table rows here */}
-            {Array.from({ length: 10 }).map((_, index) => (
+            {routeHistory.map((route, index) => (
               <tr key={index}>
                 <td>{index + 1}</td>
-                <td>Data 1</td>
-                <td>Data 2</td>
-                <td>Data 3</td>
+                <td>{`${route.startLat}, ${route.startLng}`}</td>
+                <td>{`${route.endLat}, ${route.endLng}`}</td>
+                <td>{route.trafficInfo === 0 ? "Lancar" : "Macet"}</td>
+                <td>{(route.duration / 60).toFixed(2)} mins</td>
+                <td>{(route.distance / 1000).toFixed(2)} km</td>
+                <td>{route.timestamp}</td>
               </tr>
             ))}
           </tbody>

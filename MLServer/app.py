@@ -1,7 +1,9 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS, cross_origin
 import joblib
 
 app = Flask(__name__)
+CORS(app)
 model = joblib.load('traffic_model.pkl')
 
 @app.route('/predict', methods=['POST'])

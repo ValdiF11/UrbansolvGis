@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from "react";
-import { auth, db } from "../config/firebase";
-import { collection, addDoc, getDocs, query, where } from "firebase/firestore";
 import axios from "axios";
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, Polyline } from "react-leaflet";
 import BottomTable from "../components/bottomTable";
 import "leaflet/dist/leaflet.css";
+import { db } from "../config/firebase"; // Pastikan path-nya benar
+import { collection, addDoc, getDocs, query, where, orderBy } from "firebase/firestore";
+import L from "leaflet";
 
 const Home = () => {
   const [start, setStart] = useState(null);
@@ -14,11 +15,16 @@ const Home = () => {
   const [route, setRoute] = useState([]);
   const [displayedRoute, setDisplayedRoute] = useState([]);
   const [routeHistory, setRouteHistory] = useState([]);
-  const [userDetail, setUserDetail] = useState(null);
+  const [popupPosition, setPopupPosition] = useState(null);
+  const [popupMessage, setPopupMessage] = useState("");
+  const [showPopup, setShowPopup] = useState(false); // State untuk mengontrol visibilitas popup
+  const [markers, setMarkers] = useState([]); // State untuk menyimpan semua marker
 
-  //   useEffect(() => {
-  //     fetchRouteHistory();
-  //   }, []);
+  const userId = localStorage.getItem("user"); // Ambil userId dari localStorage atau global state
+
+  useEffect(() => {
+    fetchRouteHistory();
+  }, []);
 
   const getRoute = async (start, end, alternatives = false) => {
     const response = await axios({
@@ -47,37 +53,46 @@ const Home = () => {
     return response.data.traffic;
   };
 
-  //   const saveRoute = async (start, end, traffic) => {
-  //     await axios({
-  //       url: "http://localhost:3000/map/addRoute",
-  //       data: {
-  //         startLat: start.lat,
-  //         startLng: start.lng,
-  //         endLat: end.lat,
-  //         endLng: end.lng,
-  //         trafficInfo: traffic,
-  //       },
-  //       method: "POST",
-  //       headers: {
-  //         Authorization: `Bearer ${localStorage.access_token}`,
-  //       },
-  //     });
-  //   };
+  const saveRoute = async (start, end, traffic, duration, distance) => {
+    try {
+      await addDoc(collection(db, "routes"), {
+        userId, // Simpan userId ke dalam dokumen
+        startLat: start.lat,
+        startLng: start.lng,
+        endLat: end.lat,
+        endLng: end.lng,
+        trafficInfo: traffic,
+        duration: duration,
+        distance: distance,
+        timestamp: new Date(),
+      });
+      fetchRouteHistory(); // Ambil ulang riwayat rute setelah menyimpan rute baru
+    } catch (error) {
+      console.error("Error saving route: ", error);
+    }
+  };
 
   const fetchRouteHistory = async () => {
-    const response = await axios({
-      url: "http://localhost:3000/map/getRoutes",
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${localStorage.access_token}`,
-      },
-    });
-    setRouteHistory(response.data);
+    try {
+      const q = query(collection(db, "routes"), where("userId", "==", userId), orderBy("timestamp", "desc")); // Mengurutkan berdasarkan timestamp descending
+      const querySnapshot = await getDocs(q);
+      setRouteHistory(
+        querySnapshot.docs.map((doc) => {
+          const data = doc.data();
+          return {
+            ...data,
+            timestamp: data.timestamp.toDate().toLocaleString(),
+          };
+        })
+      );
+    } catch (error) {
+      console.error("Error fetching route history: ", error);
+    }
   };
 
   const createRoute = async (start, end) => {
     if (!start || !end) {
-      console.error("Start or End coordinates are not set properly.", start, end);
+      console.error("Koordinat Awal atau Akhir tidak diatur dengan benar.", start, end);
       return;
     }
 
@@ -98,6 +113,8 @@ const Home = () => {
     }
 
     let mainRoute = routes[0].geometry.coordinates;
+    let duration = routes[0].duration;
+    let distance = routes[0].distance;
 
     if (traffic === 1) {
       routes = await getRoute(start, end, true);
@@ -113,28 +130,64 @@ const Home = () => {
         traffic = await fetchTrafficInfo(altStart, altEnd);
         if (traffic === 0) {
           mainRoute = routes[i].geometry.coordinates;
+          duration = routes[i].duration;
+          distance = routes[i].distance;
           break;
         }
       }
     }
     setRoute(mainRoute);
     setTrafficInfo(traffic);
-    animateRoute(mainRoute);
-    // saveRoute(start, end, traffic);
+    animateRoute(mainRoute, traffic, duration, distance);
+    saveRoute(start, end, traffic, duration, distance);
   };
 
-  const animateRoute = (route) => {
+  const animateRoute = async (route, traffic, duration, distance) => {
     let index = 0;
     setDisplayedRoute([]);
+    let trafficDetected = false;
+    let delay = 100; // Kecepatan normal animasi (100ms per langkah)
 
     const interval = setInterval(() => {
       if (index < route.length) {
         setDisplayedRoute((prev) => [...prev, route[index]]);
+        if (traffic === 1 && !trafficDetected && index === Math.floor(route.length / 2)) {
+          const macetMarker = {
+            position: [route[index][1], route[index][0]],
+            message: "Jalan macet, mencari rute lain.",
+            icon: L.icon({
+              iconUrl: "https://cdn.rawgit.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png",
+              iconSize: [25, 41],
+              iconAnchor: [12, 41],
+              popupAnchor: [1, -34],
+            }),
+          };
+          setMarkers((prevMarkers) => [...prevMarkers, macetMarker]); // Tambahkan marker kondisi macet ke dalam markers
+          setPopupPosition(macetMarker.position);
+          setPopupMessage(macetMarker.message);
+          setShowPopup(true);
+          trafficDetected = true;
+          delay = 2000; // Animasi diperlambat menjadi 2 detik per langkah setelah terdeteksi macet
+        }
         index++;
       } else {
         clearInterval(interval);
+        const endMarker = {
+          position: [route[route.length - 1][1], route[route.length - 1][0]],
+          message: `Rute selesai. Jarak: ${(distance / 1000).toFixed(2)} km, Waktu tempuh: ${(duration / 60).toFixed(2)} menit.`,
+          icon: L.icon({
+            iconUrl: "https://cdn.rawgit.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png",
+            iconSize: [25, 41],
+            iconAnchor: [12, 41],
+            popupAnchor: [1, -34],
+          }),
+        };
+        setMarkers((prevMarkers) => [...prevMarkers, endMarker]); // Tambahkan marker titik akhir rute ke dalam markers
+        setPopupPosition(endMarker.position);
+        setPopupMessage(endMarker.message);
+        setShowPopup(true);
       }
-    }, 100); // Adjust the speed of the animation
+    }, delay); // Menggunakan variabel delay untuk menentukan kecepatan animasi
   };
 
   const handleMapClick = (e) => {
@@ -154,6 +207,10 @@ const Home = () => {
     setRoute([]);
     setDisplayedRoute([]);
     setTrafficInfo(null);
+    setPopupPosition(null);
+    setPopupMessage("");
+    setShowPopup(false);
+    setMarkers([]); // Hapus semua marker saat tombol Clear ditekan
   };
 
   const MapClickHandler = () => {
@@ -163,22 +220,9 @@ const Home = () => {
     return null;
   };
 
-  //   const filter = (displayedRoute) => {
-  //     let array = displayedRoute;
-  //     array = array.filter((element) => element !== undefined);
-  //     console.log(array);
-  //     return array;
-  //   };
-
-  //   const data = filter(displayedRoute);
   return (
     <>
       <div className="col-12 " style={{ height: "65%", backgroundColor: "#1565c0" }}>
-        {trafficInfo !== null && (
-          <div className={`alert ${trafficInfo === 0 ? "alert-success" : "alert-danger"}`}>
-            Traffic Info: {trafficInfo === 0 ? "Lancar" : "Macet"}
-          </div>
-        )}
         <div id="map" style={{ height: "85%", marginTop: "20px" }}>
           <MapContainer center={[-6.9175, 107.6191]} zoom={13} style={{ height: "100%", width: "100%" }}>
             <TileLayer
@@ -199,13 +243,22 @@ const Home = () => {
             {displayedRoute.length > 0 && (
               <Polyline
                 positions={displayedRoute
-                  .filter((coord) => coord && coord.length === 2) // Ensure coord is valid
+                  .filter((coord) => coord && coord.length === 2) // Pastikan coord valid
                   .map((coord) => {
-                    console.log(coord);
                     if (coord) return [coord[1], coord[0]];
                   })}
-                color="blue"
+                color={trafficInfo === 1 ? "red" : "blue"}
               />
+            )}
+            {markers.map((marker, index) => (
+              <Marker key={index} position={marker.position} icon={marker.icon}>
+                <Popup open={true}>{marker.message}</Popup>
+              </Marker>
+            ))}
+            {popupPosition && showPopup && (
+              <Marker position={popupPosition}>
+                <Popup open={true}>{popupMessage}</Popup>
+              </Marker>
             )}
           </MapContainer>
         </div>
@@ -213,7 +266,7 @@ const Home = () => {
           Clear
         </button>
       </div>
-      <BottomTable />
+      <BottomTable routeHistory={routeHistory} />
     </>
   );
 };
