@@ -10,7 +10,9 @@ export default function MainLayout() {
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((user) => {
       setUser(user ? user : null);
-      console.log(user);
+      if (user) {
+        localStorage.setItem("user", JSON.stringify(user.uid));
+      }
     });
 
     return () => unsubscribe();

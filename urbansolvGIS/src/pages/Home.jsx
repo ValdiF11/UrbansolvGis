@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { auth, db } from "../config/firebase";
-import { doc, getDoc } from "firebase/firestore";
+import { collection, addDoc, getDocs, query, where } from "firebase/firestore";
 import axios from "axios";
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, Polyline } from "react-leaflet";
 import BottomTable from "../components/bottomTable";
@@ -20,17 +20,6 @@ const Home = () => {
   //     fetchRouteHistory();
   //   }, []);
 
-  const fetchUserData = async () => {
-    const user = auth.currentUser;
-    const docRef = doc(db, "Users", user.uid);
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-      setUserDetail(docSnap.data());
-      console.log("Document data:", docSnap.data());
-    } else {
-      console.log("User not login");
-    }
-  };
   const getRoute = async (start, end, alternatives = false) => {
     const response = await axios({
       url: `https://api.mapbox.com/directions/v5/mapbox/driving/${start.lng},${start.lat};${end.lng},${end.lat}`,

@@ -18,8 +18,6 @@ const Login = () => {
     try {
       setLoading(true);
       const user = await signInWithEmailAndPassword(auth, email, password);
-      console.log(user);
-      localStorage.access_token = `Bearer ${user.accessToken}`;
       setLoading(false);
       Swal.fire({
         icon: "success",
