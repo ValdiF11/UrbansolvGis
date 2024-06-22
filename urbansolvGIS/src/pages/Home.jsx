@@ -3,24 +3,26 @@ import axios from "axios";
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, Polyline } from "react-leaflet";
 import BottomTable from "../components/bottomTable";
 import "leaflet/dist/leaflet.css";
-import { db } from "../config/firebase"; // Pastikan path-nya benar
+import { db } from "../config/firebase";
 import { collection, addDoc, getDocs, query, where, orderBy } from "firebase/firestore";
 import L from "leaflet";
+import { ToastContainer, toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 const Home = () => {
   const [start, setStart] = useState(null);
   const [end, setEnd] = useState(null);
   const [trafficInfo, setTrafficInfo] = useState(null);
-  const [loading, setLoading] = useState(false);
   const [route, setRoute] = useState([]);
   const [displayedRoute, setDisplayedRoute] = useState([]);
   const [routeHistory, setRouteHistory] = useState([]);
   const [popupPosition, setPopupPosition] = useState(null);
   const [popupMessage, setPopupMessage] = useState("");
-  const [showPopup, setShowPopup] = useState(false); // State untuk mengontrol visibilitas popup
-  const [markers, setMarkers] = useState([]); // State untuk menyimpan semua marker
+  const [showPopup, setShowPopup] = useState(false);
+  const [markers, setMarkers] = useState([]);
+  const userId = localStorage.getItem("user");
 
-  const userId = localStorage.getItem("user"); // Ambil userId dari localStorage atau global state
+  const token = import.meta.env.VITE_JAWG_ACCESS_TOKEN;
 
   useEffect(() => {
     fetchRouteHistory();
@@ -56,7 +58,7 @@ const Home = () => {
   const saveRoute = async (start, end, traffic, duration, distance) => {
     try {
       await addDoc(collection(db, "routes"), {
-        userId, // Simpan userId ke dalam dokumen
+        userId,
         startLat: start.lat,
         startLng: start.lng,
         endLat: end.lat,
@@ -66,7 +68,7 @@ const Home = () => {
         distance: distance,
         timestamp: new Date(),
       });
-      fetchRouteHistory(); // Ambil ulang riwayat rute setelah menyimpan rute baru
+      fetchRouteHistory();
     } catch (error) {
       console.error("Error saving route: ", error);
     }
@@ -74,7 +76,7 @@ const Home = () => {
 
   const fetchRouteHistory = async () => {
     try {
-      const q = query(collection(db, "routes"), where("userId", "==", userId), orderBy("timestamp", "desc")); // Mengurutkan berdasarkan timestamp descending
+      const q = query(collection(db, "routes"), where("userId", "==", userId), orderBy("timestamp", "desc"));
       const querySnapshot = await getDocs(q);
       setRouteHistory(
         querySnapshot.docs.map((doc) => {
@@ -136,6 +138,11 @@ const Home = () => {
         }
       }
     }
+
+    // Menambahkan durasi 10 menit jika terdeteksi kemacetan
+    if (traffic === 1) {
+      duration += 600; // 600 detik = 10 menit
+    }
     setRoute(mainRoute);
     setTrafficInfo(traffic);
     animateRoute(mainRoute, traffic, duration, distance);
@@ -154,7 +161,7 @@ const Home = () => {
         if (traffic === 1 && !trafficDetected && index === Math.floor(route.length / 2)) {
           const macetMarker = {
             position: [route[index][1], route[index][0]],
-            message: "Jalan macet, mencari rute lain.",
+            message: "Titik Parah Kemacetan.",
             icon: L.icon({
               iconUrl: "https://cdn.rawgit.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png",
               iconSize: [25, 41],
@@ -162,12 +169,17 @@ const Home = () => {
               popupAnchor: [1, -34],
             }),
           };
-          setMarkers((prevMarkers) => [...prevMarkers, macetMarker]); // Tambahkan marker kondisi macet ke dalam markers
+          setMarkers((prevMarkers) => [...prevMarkers, macetMarker]);
           setPopupPosition(macetMarker.position);
           setPopupMessage(macetMarker.message);
           setShowPopup(true);
           trafficDetected = true;
-          delay = 2000; // Animasi diperlambat menjadi 2 detik per langkah setelah terdeteksi macet
+          delay = 2000;
+
+          // Menampilkan toast ketika terdeteksi kemacetan
+          toast.warning("Ada kemacetan terdeteksi. Durasi waktu akan mengalami perlambatan sekitar 10 menit.", {
+            position: "top-center",
+          });
         }
         index++;
       } else {
@@ -182,21 +194,19 @@ const Home = () => {
             popupAnchor: [1, -34],
           }),
         };
-        setMarkers((prevMarkers) => [...prevMarkers, endMarker]); // Tambahkan marker titik akhir rute ke dalam markers
+        setMarkers((prevMarkers) => [...prevMarkers, endMarker]);
         setPopupPosition(endMarker.position);
         setPopupMessage(endMarker.message);
         setShowPopup(true);
       }
-    }, delay); // Menggunakan variabel delay untuk menentukan kecepatan animasi
+    }, delay);
   };
 
   const handleMapClick = (e) => {
     if (!start) {
       setStart(e.latlng);
-      console.log("Start Point Set: ", e.latlng);
     } else if (!end) {
       setEnd(e.latlng);
-      console.log("End Point Set: ", e.latlng);
       createRoute(start, e.latlng);
     }
   };
@@ -210,7 +220,7 @@ const Home = () => {
     setPopupPosition(null);
     setPopupMessage("");
     setShowPopup(false);
-    setMarkers([]); // Hapus semua marker saat tombol Clear ditekan
+    setMarkers([]);
   };
 
   const MapClickHandler = () => {
@@ -222,12 +232,13 @@ const Home = () => {
 
   return (
     <>
+      <ToastContainer />
       <div className="col-12 " style={{ height: "65%", backgroundColor: "#1565c0" }}>
         <div id="map" style={{ height: "85%", marginTop: "20px" }}>
           <MapContainer center={[-6.9175, 107.6191]} zoom={13} style={{ height: "100%", width: "100%" }}>
             <TileLayer
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+              url={`https://tile.jawg.io/jawg-matrix/{z}/{x}/{y}{r}.png?access-token=${token}`}
+              attribution='<a href="https://jawg.io" title="Tiles Courtesy of Jawg Maps" target="_blank">&copy; <b>Jawg</b>Maps</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             />
             <MapClickHandler />
             {start && (
@@ -242,11 +253,7 @@ const Home = () => {
             )}
             {displayedRoute.length > 0 && (
               <Polyline
-                positions={displayedRoute
-                  .filter((coord) => coord && coord.length === 2) // Pastikan coord valid
-                  .map((coord) => {
-                    if (coord) return [coord[1], coord[0]];
-                  })}
+                positions={displayedRoute.filter((coord) => coord && coord.length === 2).map((coord) => [coord[1], coord[0]])}
                 color={trafficInfo === 1 ? "red" : "blue"}
               />
             )}
