@@ -6,7 +6,7 @@ const BottomTable = ({ routeHistory }) => {
       <div>
         <h5>User History</h5>
       </div>
-      <div className="col-12" style={{ height: "200px", overflowY: "auto", backgroundColor: "#0d47a1", color: "white" }}>
+      <div className="col-12" style={{ height: "175px", overflowY: "auto", backgroundColor: "#0d47a1", color: "white" }}>
         <table className="table table-dark table-striped mb-0">
           <thead>
             <tr>

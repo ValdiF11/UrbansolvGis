@@ -4,6 +4,7 @@ import Home from "./pages/Home";
 import MainLayout from "./components/mainLayout";
 import Login from "./pages/login";
 import Radius from "./pages/radius";
+import User from "./pages/user";
 
 const routes = createBrowserRouter([
   {
@@ -22,6 +23,10 @@ const routes = createBrowserRouter([
       {
         path: "/radius",
         element: <Radius />,
+      },
+      {
+        path: "/user",
+        element: <User />,
       },
     ],
   },

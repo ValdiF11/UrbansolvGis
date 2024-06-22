@@ -26,7 +26,7 @@ const Home = () => {
 
   useEffect(() => {
     fetchRouteHistory();
-  }, []);
+  }, [userId]);
 
   const getRoute = async (start, end, alternatives = false) => {
     const response = await axios({
@@ -139,10 +139,11 @@ const Home = () => {
       }
     }
 
-    // Menambahkan durasi 10 menit jika terdeteksi kemacetan
-    if (traffic === 1) {
-      duration += 600; // 600 detik = 10 menit
-    }
+    // // Menambahkan durasi 10 menit jika terdeteksi kemacetan
+    // if (traffic === 1) {
+    //   duration += 600; // 600 detik = 10 menit
+    // }
+
     setRoute(mainRoute);
     setTrafficInfo(traffic);
     animateRoute(mainRoute, traffic, duration, distance);
@@ -161,7 +162,7 @@ const Home = () => {
         if (traffic === 1 && !trafficDetected && index === Math.floor(route.length / 2)) {
           const macetMarker = {
             position: [route[index][1], route[index][0]],
-            message: "Titik Parah Kemacetan.",
+            message: "Titik Kemacetan.",
             icon: L.icon({
               iconUrl: "https://cdn.rawgit.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png",
               iconSize: [25, 41],
@@ -174,10 +175,10 @@ const Home = () => {
           setPopupMessage(macetMarker.message);
           setShowPopup(true);
           trafficDetected = true;
-          delay = 2000;
+          delay = 5000;
 
           // Menampilkan toast ketika terdeteksi kemacetan
-          toast.warning("Ada kemacetan terdeteksi. Durasi waktu akan mengalami perlambatan sekitar 10 menit.", {
+          toast.warning("Ada kemacetan terdeteksi. Sistem mencari rute alternatif lain.", {
             position: "top-center",
           });
         }
@@ -194,6 +195,9 @@ const Home = () => {
             popupAnchor: [1, -34],
           }),
         };
+        toast.success("Rute selesai. Jarak: " + (distance / 1000).toFixed(2) + " km, Waktu tempuh: " + (duration / 60).toFixed(2) + " menit.", {
+          position: "top-center",
+        });
         setMarkers((prevMarkers) => [...prevMarkers, endMarker]);
         setPopupPosition(endMarker.position);
         setPopupMessage(endMarker.message);
@@ -233,8 +237,11 @@ const Home = () => {
   return (
     <>
       <ToastContainer />
-      <div className="col-12 " style={{ height: "65%", backgroundColor: "#1565c0" }}>
-        <div id="map" style={{ height: "85%", marginTop: "20px" }}>
+      <div className="col-12 py-2" style={{ height: "70%", backgroundColor: "#1565c0" }}>
+        <button onClick={handleClear} className="btn btn-warning mt-2" style={{ position: "absolute", top: 35, left: 300, zIndex: 1000 }}>
+          Clear
+        </button>
+        <div id="map" style={{ height: "100%" }}>
           <MapContainer center={[-6.9175, 107.6191]} zoom={13} style={{ height: "100%", width: "100%" }}>
             <TileLayer
               url={`https://tile.jawg.io/jawg-matrix/{z}/{x}/{y}{r}.png?access-token=${token}`}
@@ -254,7 +261,7 @@ const Home = () => {
             {displayedRoute.length > 0 && (
               <Polyline
                 positions={displayedRoute.filter((coord) => coord && coord.length === 2).map((coord) => [coord[1], coord[0]])}
-                color={trafficInfo === 1 ? "red" : "blue"}
+                color={"blue"}
               />
             )}
             {markers.map((marker, index) => (
@@ -269,9 +276,6 @@ const Home = () => {
             )}
           </MapContainer>
         </div>
-        <button onClick={handleClear} className="btn btn-secondary mt-2">
-          Clear
-        </button>
       </div>
       <BottomTable routeHistory={routeHistory} />
     </>
